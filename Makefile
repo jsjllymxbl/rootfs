@@ -53,6 +53,10 @@ APK_CACHE     ?= $(WORK_ROOT)/apkcache
 COMPRESS      ?= gzip
 SOURCE_DATE_EPOCH ?= 0
 
+# 桌面层 post-install.sh 用的普通用户
+DESKTOP_USER     ?= aries
+DESKTOP_PASSWORD ?= 123456
+
 # PACKAGES 替换各层清单，ADD_PACKAGES 追加（服务同理）
 PACKAGES     ?=
 ADD_PACKAGES ?=
@@ -89,6 +93,7 @@ define BUILD_ENV
 	ADD_PACKAGES='$(ADD_PACKAGES)' SERVICES='$(SERVICES)' \
 	ADD_SERVICES='$(ADD_SERVICES)' ROOT_PASSWORD='$(ROOT_PASSWORD)' \
 	TIMEZONE='$(TIMEZONE)' HOSTNAME='$(HOSTNAME)' \
+	DESKTOP_USER='$(DESKTOP_USER)' DESKTOP_PASSWORD='$(DESKTOP_PASSWORD)' \
 	KERNEL_MODULES='$(KERNEL_MODULES)' APK_CACHE='$(APK_CACHE)' \
 	SOURCE_DATE_EPOCH='$(SOURCE_DATE_EPOCH)' COMPRESS='$(COMPRESS)' \
 	ROOTFS_TAR='$(ROOTFS_TAR)' LOCAL_PKGS='$(LOCAL_PKGS)' \
@@ -122,12 +127,12 @@ check-profile:
 	done
 
 profiles:
-	@printf '%-10s %s\n' base '纯基础系统'
+	@printf '%-14s %s\n' base '纯基础系统'
 	@for d in $(CONFIG_DIR)/profiles/*/; do \
 		[ -d "$$d" ] || continue; \
 		n=$$(basename "$$d"); \
 		desc=$$(head -1 "$$d/packages.list" 2>/dev/null | sed 's/^#[[:space:]]*//'); \
-		printf '%-10s %s\n' "$$n" "$${desc:-（无描述）}"; \
+		printf '%-14s %s\n' "$$n" "$${desc:-（无描述）}"; \
 	done
 
 show: check-profile

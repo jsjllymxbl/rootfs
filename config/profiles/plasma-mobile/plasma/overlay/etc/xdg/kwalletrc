@@ -1,0 +1,3 @@
+# autologin 下 wallet 不可用，只关功能（包仍被依赖）
+[Wallet]
+Enabled=false

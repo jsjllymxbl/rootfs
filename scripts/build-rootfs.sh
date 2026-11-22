@@ -33,6 +33,8 @@ APK_UPGRADE=${APK_UPGRADE:-yes}
 ROOT_PASSWORD=${ROOT_PASSWORD-alpine}
 TIMEZONE=${TIMEZONE:-Asia/Shanghai}
 HOSTNAME=${HOSTNAME:-aries}
+DESKTOP_USER=${DESKTOP_USER:-aries}
+DESKTOP_PASSWORD=${DESKTOP_PASSWORD:-123456}
 KERNEL_MODULES=${KERNEL_MODULES:-}
 SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-0}
 COMPRESS=${COMPRESS:-gzip}
@@ -162,7 +164,8 @@ run_hooks() {
 		[ -f "$hook" ] || continue
 		log "post-install: $l"
 		install -m 0755 "$hook" "$ROOTFS_DIR$target"
-		run "LAYER='$l' PROFILE='$PROFILE' sh $target" \
+		run "LAYER='$l' PROFILE='$PROFILE' DESKTOP_USER='$DESKTOP_USER' \
+		     DESKTOP_PASSWORD='$DESKTOP_PASSWORD' sh $target" \
 			|| die "层 $l 的 post-install.sh 失败"
 		rm -f "$ROOTFS_DIR$target"
 	done
@@ -264,7 +267,9 @@ build_tree() {
 	fi
 	[ "$(stat -c %G "$ROOTFS_DIR/etc/shadow" 2>/dev/null)" = shadow ] \
 		|| die "/etc/shadow 属组不是 shadow，PAM 密码校验会全部失败"
-	bad=$(find "$ROOTFS_DIR" -xdev ! -uid 0 -printf '%u %p\n' 2>/dev/null | head -5)
+	# 桌面用户的主目录本来就属于普通用户，排除后再查
+	bad=$(find "$ROOTFS_DIR" -xdev -path "$ROOTFS_DIR/home/$DESKTOP_USER" -prune -o \
+	      ! -uid 0 -printf '%u %p\n' 2>/dev/null | head -5)
 	[ -z "$bad" ] || die "rootfs 里有非 root 属主的文件：$bad"
 
 	umount_all
