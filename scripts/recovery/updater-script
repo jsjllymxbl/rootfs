@@ -1,0 +1,13 @@
+# edify 兜底脚本；TWRP 通常直接执行 shell 版 update-binary。
+# @@ROOTFS_MEMBER@@ 由 scripts/mk-flashable-zip.sh 替换。
+
+ui_print(" ");
+ui_print("Alpine Linux rootfs for Xiaomi Mi 2 (aries)");
+ui_print("-> /data/rootfs");
+
+package_extract_file("@@ROOTFS_MEMBER@@", "/tmp/aries-rootfs.tar.gz");
+run_program("/sbin/sh", "-c", "grep -q ' /data ' /proc/mounts || mount -t ext4 /dev/block/mmcblk0p23 /data");
+run_program("/sbin/sh", "-c", "mkdir -p /data/rootfs && rm -rf /data/rootfs/* && tar -xzf /tmp/aries-rootfs.tar.gz -C /data/rootfs && sync");
+delete("/tmp/aries-rootfs.tar.gz");
+
+ui_print("done");

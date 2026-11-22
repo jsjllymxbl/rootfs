@@ -1,0 +1,109 @@
+#!/sbin/sh
+# TWRP 装机脚本（shell 版 update-binary）；占位符由 mk-flashable-zip.sh 替换。
+# 调用: update-binary <api> <outfd> <zipfile>
+
+ZIP="$3"
+TARGET="@@TARGET_DIR@@"
+MEMBER="@@ROOTFS_MEMBER@@"
+OFFSET=@@ROOTFS_OFFSET@@
+SIZE=@@ROOTFS_SIZE@@
+LOG=/tmp/aries-install.log
+
+say() {
+    echo "$*"
+    echo "$*" >>"$LOG"
+}
+fail() {
+    say "ERROR: $*"
+    exit 1
+}
+
+[ -n "$ZIP" ] && [ -f "$ZIP" ] || fail "没拿到 zip 路径（参数: $*）"
+
+# recovery 里的命令来自 busybox/toybox，优先用 busybox 那套
+BB=""
+for b in /sbin/busybox /system/bin/busybox /sbin/toybox; do
+    [ -x "$b" ] && BB=$b && break
+done
+have() { command -v "$1" >/dev/null 2>&1; }
+bb_has() { [ -n "$BB" ] && "$BB" --list 2>/dev/null | grep -qx "$1"; }
+
+say "Alpine rootfs for Xiaomi Mi 2 (aries)"
+say "zip: $ZIP -> $TARGET"
+
+# ------------------------------------------------------------- 挂 /data ----
+if ! grep -q ' /data ' /proc/mounts; then
+    say "/data 没挂，尝试自己挂"
+    for dev in /dev/block/mmcblk0p23 \
+               /dev/block/platform/*/by-name/userdata \
+               /dev/block/bootdevice/by-name/userdata \
+               /dev/block/by-name/userdata; do
+        [ -e "$dev" ] || continue
+        for fs in ext4 f2fs auto; do
+            mount -t "$fs" "$dev" /data 2>/dev/null && break 2
+        done
+    done
+fi
+grep -q ' /data ' /proc/mounts || fail "挂不上 /data（手工 mount 后再刷）"
+[ -d /data ] || fail "/data 不存在"
+
+avail=$(df -k /data 2>/dev/null | awk 'NR==2 {print $4}')
+if [ -n "$avail" ] && [ "$avail" -gt 0 ] 2>/dev/null; then
+    need=$((SIZE * 3 / 1024 + 102400))
+    [ "$avail" -lt "$need" ] && fail "/data 只剩 ${avail}KB，解压大概要 ${need}KB"
+fi
+
+# ------------------------------------------------------------- 清旧版 ----
+if [ -d "$TARGET" ]; then
+    say "清掉旧的 $TARGET"
+    rm -rf "$TARGET"
+fi
+mkdir -p "$TARGET" || fail "建不了 $TARGET"
+
+# ------------------------------------------------------------ 解 rootfs ----
+# 按偏移提取到 /tmp，再从文件解压
+TMPTAR=/tmp/aries-rootfs.tar.gz
+TMPERR=/tmp/aries-rootfs.err
+
+tmpavail=$(df -k /tmp 2>/dev/null | awk 'NR==2 {print $4}')
+if [ -n "$tmpavail" ] && [ "$tmpavail" -gt 0 ] 2>/dev/null; then
+    need=$((SIZE / 1024 + 8192))
+    [ "$tmpavail" -lt "$need" ] && fail "/tmp 只剩 ${tmpavail}KB，放不下 $((SIZE / 1024))KB"
+fi
+
+if have tail && have head; then
+    tail -c "+$((OFFSET + 1))" "$ZIP" | head -c "$SIZE" > "$TMPTAR"
+elif have unzip; then
+    unzip -p "$ZIP" "$MEMBER" > "$TMPTAR"
+elif bb_has unzip; then
+    "$BB" unzip -p "$ZIP" "$MEMBER" > "$TMPTAR"
+else
+    fail "既没有 tail/head 也没有 unzip，取不出 $MEMBER"
+fi
+
+got=$(wc -c < "$TMPTAR" 2>/dev/null)
+got=$(echo "$got")
+[ "$got" = "$SIZE" ] || fail "取出来的大小不对：$got != $SIZE"
+say "取到 $MEMBER ($((SIZE / 1048576))MiB)"
+
+say "解压到 $TARGET（一两分钟）"
+if [ -n "$BB" ] && bb_has tar; then
+    "$BB" tar -xzf "$TMPTAR" -C "$TARGET" 2>"$TMPERR"
+else
+    gzip -dc < "$TMPTAR" | tar -xf - -C "$TARGET" 2>"$TMPERR"
+fi
+rc=$?
+# 用 -L 判断软链，避免 -f 走到 recovery 自己的 /bin
+if [ "$rc" -ne 0 ] || [ ! -f "$TARGET/bin/busybox" ] || [ ! -L "$TARGET/sbin/init" ]; then
+    grep -v 'mmap: Out of memory' "$TMPERR" 2>/dev/null | tail -5 | \
+        while read -r line; do say "$line"; done
+    fail "解压失败（rc=$rc）"
+fi
+rm -f "$TMPTAR" "$TMPERR"
+
+mkdir -p "$TARGET/lib/firmware" "$TARGET/data/local/tmp"
+sync
+
+say "完成: $(du -sh "$TARGET" 2>/dev/null | cut -f1) -> $TARGET"
+say "日志: $LOG"
+exit 0

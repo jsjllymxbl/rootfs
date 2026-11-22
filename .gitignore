@@ -1,0 +1,6 @@
+work/
+out/
+*.tar.gz
+*.zip
+__pycache__/
+*.pyc

@@ -1,0 +1,5 @@
+# /etc/apk/repositories；@BRANCH@ 由 APK_BRANCH 替换
+# @testing 固定 edge，按需用 apk add @testing <pkg>
+http://dl-cdn.alpinelinux.org/alpine/@BRANCH@/main
+http://dl-cdn.alpinelinux.org/alpine/@BRANCH@/community
+@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing

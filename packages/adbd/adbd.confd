@@ -1,0 +1,13 @@
+# /etc/init.d/adbd 参数；删掉某行即回到默认值
+
+ADBD_BIN=/usr/bin/adbd
+ADBD_SHELL=/bin/sh
+ADBD_LOG=/var/log/adbd.log
+
+# 主机端 adb devices 显示的信息
+USB_SERIAL=0123456789ABCDEF
+USB_MANUFACTURER=xiaomi
+USB_PRODUCT=aries
+
+# 等待时间：USB_WAIT * 100ms
+USB_WAIT=100

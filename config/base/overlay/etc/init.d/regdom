@@ -1,0 +1,28 @@
+#!/sbin/openrc-run
+# 设 WiFi 监管域（regulatory.db 在 initramfs，这里设国家码）
+# shellcheck disable=SC2034,SC3043
+
+description="Wireless regulatory domain"
+
+: ${REGION:=CN}
+
+command=/usr/sbin/iw
+pidfile=
+
+depend() {
+	need localmount
+}
+
+start() {
+	[ -x "$command" ] || { ewarn "regdom: $command missing, skipping"; return 0; }
+
+	ebegin "regdom: reloading regulatory database"
+	"$command" reg reload >/dev/null 2>&1
+	eend 0
+
+	sleep 1
+
+	ebegin "regdom: setting region to $REGION"
+	"$command" reg set "$REGION" >/dev/null 2>&1
+	eend $? "iw reg set $REGION failed"
+}

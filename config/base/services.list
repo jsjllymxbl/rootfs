@@ -1,0 +1,15 @@
+# <服务>[:<runlevel>]，默认 default；syslogd/klogd 由 inittab 启动
+
+devfs:sysinit
+dmesg:sysinit
+# mdev 不启用：主线内核没开 CONFIG_UEVENT_HELPER
+
+bootmisc:boot
+hostname:boot
+hwclock:boot
+seedrng:boot
+sysctl:boot
+regdom:boot
+
+adbd:default
+dropbear:default

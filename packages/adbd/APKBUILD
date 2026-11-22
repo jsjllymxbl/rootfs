@@ -1,0 +1,51 @@
+# 静态 adbd（FunctionFS、免认证）+ 配套 openrc 服务与 USB 看护脚本。
+# 上游用 submodule，abuild 不支持，clone 放在 build() 里并钉住 commit。
+
+pkgname=adbd
+pkgver=20260723
+pkgrel=1
+pkgdesc="Standalone adb daemon for Linux (FunctionFS, no auth) + openrc service"
+url="https://github.com/happyme531/standalone-linux-adbd"
+arch="armv7"
+license="Apache-2.0"
+makedepends="bash cmake git linux-headers samurai"
+options="!check"
+_commit=bdb5cdc4b516b3bc71fd2b805bc36190041a9393
+_repo="https://github.com/happyme531/standalone-linux-adbd"
+# build-linux-adbd.sh 需要的 submodule
+_submodules="
+vendor/adb vendor/core vendor/fmtlib vendor/libbase vendor/logging
+vendor/third_party/brotli vendor/third_party/lz4 vendor/third_party/zstd
+"
+source="
+	adbd.initd
+	adbd.confd
+	adbd-usb-watch
+"
+builddir="$srcdir/standalone-linux-adbd"
+
+build() {
+	cd "$srcdir"
+	rm -rf standalone-linux-adbd
+	git clone --quiet "$_repo" standalone-linux-adbd
+	cd standalone-linux-adbd
+	git checkout --quiet "$_commit"
+	# shellcheck disable=SC2086
+	git submodule update --init --depth 1 $_submodules
+
+	ANDROID_TOOLS_BUILD_JOBS=${JOBS:-$(nproc)} \
+		bash scripts/build-linux-adbd.sh "$srcdir/build"
+}
+
+package() {
+	install -Dm755 "$srcdir/build/vendor/adbd" "$pkgdir"/usr/bin/adbd
+	install -Dm755 "$srcdir"/adbd.initd "$pkgdir"/etc/init.d/adbd
+	install -Dm644 "$srcdir"/adbd.confd "$pkgdir"/etc/conf.d/adbd
+	install -Dm755 "$srcdir"/adbd-usb-watch "$pkgdir"/usr/bin/adbd-usb-watch
+}
+
+sha512sums="
+6b15fce839e9576a6b5f32da2970fe88396dec712ce48ad1008fc0a9801ebd79367209b621c38370a58982a2a4f8c19c6dfce7929cd0f47f0b29b6242fa39143  adbd.initd
+e68edcb077b7cd1ab2c006eb773e1e03aac6f42cbf1cc9bbb205f0331fda1b8334a582806a411c94f5e65921bb361a6b7c3cf98ff40e4a8c75fc34f0d7aed95e  adbd.confd
+bd14bf5e85333c564bf4c409054dbcd8a5d547951cc739cec4b660ca025acc02a321db9fb2a8f601c7d99ea67d460ca40ce3f975fb25c77f8fe7efd482afe996  adbd-usb-watch
+"

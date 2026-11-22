@@ -1,0 +1,2 @@
+# WiFi 国家码；regulatory.db 由 initramfs 提供
+REGION=CN

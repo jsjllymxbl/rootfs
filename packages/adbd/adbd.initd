@@ -1,0 +1,191 @@
+#!/sbin/openrc-run
+# USB adb gadget（configfs + FunctionFS）；daemon 由本包提供。
+# 顺序：建 gadget -> 后台 mount functionfs -> 等 ep1 -> 绑 UDC。
+# shellcheck disable=SC2034,SC2223,SC3043,SC2012
+
+description="USB adb (configfs + functionfs)"
+
+: ${ADBD_BIN:=/usr/bin/adbd}
+: ${ADBD_SHELL:=/bin/sh}
+: ${ADBD_LOG:=/var/log/adbd.log}
+: ${USB_SERIAL:=0123456789ABCDEF}
+: ${USB_MANUFACTURER:=xiaomi}
+: ${USB_PRODUCT:=aries}
+: ${USB_WAIT:=100}          # 100 * 100ms = 10s
+
+G=/sys/kernel/config/usb_gadget/g1
+FFS=/dev/usb-ffs/adb
+
+command=$ADBD_BIN
+pidfile=/run/adbd.pid
+supervisor=supervise-daemon
+respawn_delay=1
+respawn_max=0
+
+depend() {
+	need localmount
+	after dev
+}
+
+note() {
+	echo "$(date '+%H:%M:%S') adbd: $*" >>"$ADBD_LOG" 2>/dev/null
+}
+
+mounted() {
+	grep -q " $1 " /proc/mounts 2>/dev/null
+}
+
+tick() {
+	usleep 100000 2>/dev/null || sleep 1
+}
+
+# 按创建的反序拆；configfs 里只能 rmdir，从最深层开始
+gadget_down() {
+	[ -e "$G/UDC" ] && printf '' >"$G/UDC" 2>/dev/null
+	if mounted "$FFS"; then
+		umount -l "$FFS" 2>/dev/null
+	fi
+	[ -d "$G" ] || return 0
+
+	rm -f "$G/configs/c.1/"* \
+	      "$G/configs/c.1/strings/0x409/configuration" \
+	      "$G/strings/0x409/serialnumber" \
+	      "$G/strings/0x409/manufacturer" \
+	      "$G/strings/0x409/product" \
+	      "$G/idVendor" "$G/idProduct" "$G/bcdUSB" 2>/dev/null
+	rmdir "$G/configs/c.1/strings/0x409" 2>/dev/null
+	rmdir "$G/configs/c.1/strings"       2>/dev/null
+	rmdir "$G/configs/c.1"               2>/dev/null
+	rmdir "$G/configs"                   2>/dev/null
+	rmdir "$G/functions/ffs.adb"         2>/dev/null
+	rmdir "$G/functions"                 2>/dev/null
+	rmdir "$G/strings/0x409"             2>/dev/null
+	rmdir "$G/strings"                   2>/dev/null
+	rmdir "$G"                           2>/dev/null
+	return 0
+}
+
+start_pre() {
+	local i udc
+
+	# 不重设 PATH：openrc helper 在 /usr/libexec/rc/bin
+	export HOME=/ \
+		SHELL=/bin/sh \
+		TMPDIR=/tmp \
+		ADBD_SHELL=$ADBD_SHELL
+	mkdir -p /var/log /data/local/tmp 2>/dev/null
+
+	if [ ! -x "$ADBD_BIN" ]; then
+		note "$ADBD_BIN is missing"
+		eerror "adbd: $ADBD_BIN missing (install the adbd package)"
+		return 1
+	fi
+
+	i=$USB_WAIT
+	while [ "$i" -gt 0 ] && [ -z "$(ls /sys/class/udc 2>/dev/null)" ]; do
+		tick
+		i=$((i - 1))
+	done
+	udc=$(ls /sys/class/udc 2>/dev/null | head -n1)
+	if [ -z "$udc" ]; then
+		note "no UDC under /sys/class/udc"
+		eerror "adbd: no UDC found (need CONFIG_USB_CONFIGFS*/CONFIG_USB_GADGET)"
+		return 1
+	fi
+
+	modprobe libcomposite 2>/dev/null
+	if ! mounted /sys/kernel/config; then
+		mount -t configfs none /sys/kernel/config 2>/dev/null
+	fi
+	if [ ! -d /sys/kernel/config/usb_gadget ]; then
+		note "configfs has no usb_gadget"
+		eerror "adbd: configfs has no usb_gadget (libcomposite missing?)"
+		return 1
+	fi
+
+	gadget_down
+
+	mkdir -p "$G" || { note "cannot create $G"; return 1; }
+	echo 0x18d1 >"$G/idVendor"  2>/dev/null
+	echo 0x4ee7 >"$G/idProduct" 2>/dev/null
+	echo 0x0200 >"$G/bcdUSB"    2>/dev/null
+	mkdir -p "$G/strings/0x409"
+	echo "$USB_SERIAL"       >"$G/strings/0x409/serialnumber" 2>/dev/null
+	echo "$USB_MANUFACTURER" >"$G/strings/0x409/manufacturer" 2>/dev/null
+	echo "$USB_PRODUCT"      >"$G/strings/0x409/product"      2>/dev/null
+	mkdir -p "$G/configs/c.1/strings/0x409"
+	echo adb >"$G/configs/c.1/strings/0x409/configuration" 2>/dev/null
+	echo 500 >"$G/configs/c.1/MaxPower"                    2>/dev/null
+
+	if ! mkdir -p "$G/functions/ffs.adb" 2>/dev/null; then
+		note "cannot create functions/ffs.adb"
+		eerror "adbd: cannot create functions/ffs.adb (CONFIG_USB_F_FS missing?)"
+		return 1
+	fi
+	ln -sf "$G/functions/ffs.adb" "$G/configs/c.1/ffs.adb" 2>/dev/null
+
+	mkdir -p "$FFS"
+	if ! mounted "$FFS"; then
+		# mount 会阻塞到 adbd 写完描述符
+		mount -t functionfs adb "$FFS" &
+	fi
+
+	note "gadget ready, waiting for adbd on $udc"
+	return 0
+}
+
+# 拔插看护：盯 VBUS，重启服务重建 functionfs 实例
+HOTPLUG_WATCH=/usr/bin/adbd-usb-watch
+
+start_hotplug_watch() {
+	[ -x "$HOTPLUG_WATCH" ] || return 0
+	"$HOTPLUG_WATCH" >/dev/null 2>&1 &
+}
+
+stop_hotplug_watch() {
+	local pid
+
+	[ -f /run/adbd-usb-watch.pid ] || return 0
+	pid=$(cat /run/adbd-usb-watch.pid 2>/dev/null)
+	[ -n "$pid" ] && kill "$pid" 2>/dev/null
+	rm -f /run/adbd-usb-watch.pid
+	return 0
+}
+
+start_post() {
+	local i=$USB_WAIT udc
+
+	# 失败也不能 return 1，否则 openrc 认不出已启动的 daemon
+	while [ "$i" -gt 0 ] && [ ! -e "$FFS/ep1" ]; do
+		tick
+		i=$((i - 1))
+	done
+	if [ ! -e "$FFS/ep1" ]; then
+		note "$FFS/ep1 never appeared"
+		ewarn "adbd: $FFS/ep1 did not show up, adb is probably unusable (see $ADBD_LOG)"
+		return 0
+	fi
+
+	# UDC 要先切到 device 模式
+	for r in /sys/class/usb_role/*/role; do
+		[ -e "$r" ] && echo device >"$r" 2>/dev/null
+	done
+
+	udc=$(ls /sys/class/udc 2>/dev/null | head -n1)
+	if echo "$udc" >"$G/UDC" 2>/dev/null; then
+		note "bound to $udc, adb is up"
+		einfo "adbd: bound to $udc"
+		start_hotplug_watch
+		return 0
+	fi
+	note "cannot bind $udc"
+	ewarn "adbd: cannot bind $udc to $G/UDC (service still counted as started)"
+	return 0
+}
+
+stop_post() {
+	note "stopping"
+	stop_hotplug_watch
+	gadget_down
+	return 0
+}
