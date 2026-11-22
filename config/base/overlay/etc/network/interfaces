@@ -1,0 +1,3 @@
+# 只配回环让ifquery能解析
+auto lo
+iface lo inet loopback
