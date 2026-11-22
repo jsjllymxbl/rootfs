@@ -1,0 +1,153 @@
+# 小米 2（APQ8064 / Adreno 320，a3xx）专用精简 mesa。
+# 基于 Alpine edge 的 mesa APKBUILD，只保留 armv7 + freedreno gallium。
+pkgname=mesa
+pkgver=26.1.6
+pkgrel=1
+pkgdesc="Mesa DRI OpenGL library (armv7 freedreno/a3xx only)"
+url="https://www.mesa3d.org"
+arch="armv7"
+license="MIT AND SGI-B-2.0 AND BSL-1.0"
+subpackages="
+	$pkgname-dbg
+	$pkgname-dev
+	$pkgname-dri-gallium:_gallium
+	$pkgname-egl
+	$pkgname-gl
+	$pkgname-gles
+	$pkgname-gbm
+	"
+
+depends_dev="
+	libdrm-dev
+	libxdamage-dev
+	libxshmfence-dev
+	"
+makedepends="
+	$depends_dev
+	binutils
+	bison
+	eudev-dev
+	flex
+	gettext
+	libx11-dev
+	libxfixes-dev
+	libxrandr-dev
+	libxxf86vm-dev
+	meson
+	py3-mako
+	py3-packaging
+	py3-ply
+	py3-yaml
+	python3
+	wayland-dev
+	wayland-protocols
+	xorgproto
+	zlib-dev
+	"
+
+# a3xx 修复按依赖关系合并成两个补丁：
+# 0001 = 空 VBO + WFI 常量加载保护 + buffer blit 采样视图（fd3_emit.c 上四个补丁的链）
+# 0002 = VS 不写 position 的处理（独立补丁）
+source="https://mesa.freedesktop.org/archive/mesa-${pkgver/_/-}.tar.xz
+	0001-a3xx-null-vbo-wfi-sampler-view-fixes.patch
+	0002-a3xx-vs-without-position-output.patch
+	"
+builddir="$srcdir/mesa-${pkgver/_/-}"
+options="!check" # 设备上不跑 mesa 测试套件
+
+_dri_driverdir=/usr/lib/dri
+
+prepare() {
+	default_prepare
+}
+
+build() {
+	# -g1 足够回溯，同时避免 debug 信息把 apk 撑大
+	export CFLAGS="$CFLAGS -O2 -g1"
+	export CXXFLAGS="$CXXFLAGS -O2 -g1"
+	export CPPFLAGS="$CPPFLAGS -O2 -g1"
+
+	# gnu2 tlsdesc 在 binutils 里有 bug
+	# https://gitlab.alpinelinux.org/alpine/aports/-/issues/14140
+	export CFLAGS="$CFLAGS -mtls-dialect=gnu"
+	export CXXFLAGS="$CXXFLAGS -mtls-dialect=gnu"
+
+	abuild-meson \
+		-Db_ndebug=true \
+		-Db_lto=false \
+		-Dbackend_max_links=2 \
+		-Dbuild-tests=false \
+		-Ddri-drivers-path=$_dri_driverdir \
+		-Dgallium-drivers=freedreno \
+		-Dfreedreno-kmds=msm \
+		-Dvulkan-drivers= \
+		-Dvulkan-layers= \
+		-Dplatforms=x11,wayland \
+		-Dopengl=true \
+		-Dglx=dri \
+		-Degl=enabled \
+		-Dgles1=disabled \
+		-Dgles2=enabled \
+		-Dgbm=enabled \
+		-Dshader-cache=enabled \
+		-Dzlib=enabled \
+		-Dzstd=disabled \
+		-Ddisplay-info=disabled \
+		-Dexpat=disabled \
+		-Dxmlconfig=disabled \
+		-Dgallium-va=disabled \
+		-Dgallium-rusticl=false \
+		-Dllvm=disabled \
+		-Dvideo-codecs= \
+		. output
+
+	meson configure --no-pager output
+	meson compile -C output
+}
+
+package() {
+	DESTDIR="$pkgdir" meson install --no-rebuild -C output
+}
+
+egl() {
+	pkgdesc="Mesa libEGL runtime libraries"
+	depends="mesa=$pkgver-r$pkgrel mesa-gles=$pkgver-r$pkgrel"
+
+	amove usr/lib/libEGL.so*
+}
+
+gl() {
+	pkgdesc="Mesa libGL runtime libraries"
+	depends="mesa=$pkgver-r$pkgrel"
+
+	amove usr/lib/libGL.so*
+}
+
+gles() {
+	pkgdesc="Mesa libGLESv2 runtime libraries"
+	depends="mesa=$pkgver-r$pkgrel"
+
+	amove usr/lib/libGLES*.so*
+}
+
+gbm() {
+	pkgdesc="Mesa gbm library"
+	depends="mesa=$pkgver-r$pkgrel"
+
+	amove usr/lib/libgbm.so.*
+}
+
+_gallium() {
+	pkgdesc="Mesa gallium DRI drivers (freedreno a3xx)"
+	depends="mesa=$pkgver-r$pkgrel"
+
+	# 只编了 freedreno，没有 swrast_dri.so 可作 megadriver 的硬链接样本，
+	# 直接把整个目录搬进子包即可（amove 用 mv，硬链接仍然保留）
+	amove usr/lib/dri
+}
+
+sha512sums="
+6746b73f5b87e8ff3723eee586b4b5f033dbe6d13cd0309d743b7fa484c350268859ec8ff21aadcbca7a04070cdaa7828146dd28dde4b1935bb879891d687f0b  mesa-26.1.6.tar.xz
+df3349e9a301e3a246c080d5fa3df49ae5c7cf5bdefb3b4153e18b2a54d715055e602feeed8b2ae376c87d403548e9e209ce83c6304d3bc5ab6ce818c0fd718e  0001-a3xx-null-vbo-wfi-sampler-view-fixes.patch
+9e80e2e788bfc2555483e72fef5d0bd99f0fd4f8bb685f53b9d5dcd91e75d305fbc934c86cdf448b960d35b14f3178edc2337585ac10ae849cdf48e1794eaa6f  0002-a3xx-vs-without-position-output.patch
+"
