@@ -1,7 +1,7 @@
 # 基础层包清单；adbd 由 packages/adbd 提供（LOCAL_PKGS）
 
+# 基础系统
 busybox
-busybox-mdev-openrc
 busybox-openrc
 busybox-suid
 alpine-conf
@@ -10,17 +10,27 @@ alpine-baselayout
 tzdata
 ca-certificates
 
+# 设备管理
+eudev
+udev-init-scripts
+udev-init-scripts-openrc
+kmod
+
 # 网络（wcn36xx 用 mac80211，无需 wcnss_service）
 wpa_supplicant
 iw
 # wireless-regdb 由 initramfs 提供
 
+# 远程访问与工具
 dropbear
 curl
 sudo
 nano
 htop
 
+# 触摸键盘
+buffyboard
+
+# 存储
 e2fsprogs
 dosfstools
-kmod

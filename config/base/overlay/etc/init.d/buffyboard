@@ -1,0 +1,11 @@
+#!/sbin/openrc-run
+# 触摸键盘：写 /dev/fb0，经 /dev/uinput 注入按键到当前 tty
+description="Touch keyboard for the framebuffer console"
+command=/usr/bin/buffyboard
+pidfile=/run/buffyboard.pid
+command_background=yes
+
+depend() {
+	need localmount
+	after dev bootmisc udev-trigger udev-settle
+}

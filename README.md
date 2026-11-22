@@ -68,6 +68,8 @@ out/                      rootfs tar、刷机包、本地 apk
 - 基础系统：busybox/openrc、WPA supplicant、dropbear、curl/sudo/nano/htop、e2fsprogs/kmod；
   root 密码 `alpine`，时区 `Asia/Shanghai`，主机名 `aries`。
 - `/etc/network/interfaces` 只配置回环，满足 dropbear 的 `need net`；WiFi 手工配。
+- `buffyboard` 是帧缓冲 tty 的触摸键盘，随 default runlevel 启动；依赖内核 uinput 和 fbdev。
+  base 启用 eudev 给触摸屏打 `ID_INPUT_TOUCHSCREEN` 标签，否则 libinput 会判为 unsupported。
 - 固件由 initramfs 在切根前拷入，rootfs 不带。
 - 本地包 `adbd` 来自 `packages/adbd`：静态、免认证、FunctionFS；服务与 USB 看护脚本同包。
 

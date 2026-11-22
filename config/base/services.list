@@ -2,7 +2,9 @@
 
 devfs:sysinit
 dmesg:sysinit
-# mdev 不启用：主线内核没开 CONFIG_UEVENT_HELPER
+udev:sysinit
+udev-trigger:sysinit
+udev-settle:sysinit
 
 bootmisc:boot
 hostname:boot
@@ -12,4 +14,5 @@ sysctl:boot
 regdom:boot
 
 adbd:default
+buffyboard:default
 dropbear:default
