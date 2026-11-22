@@ -267,10 +267,13 @@ build_tree() {
 	fi
 	[ "$(stat -c %G "$ROOTFS_DIR/etc/shadow" 2>/dev/null)" = shadow ] \
 		|| die "/etc/shadow 属组不是 shadow，PAM 密码校验会全部失败"
-	# 桌面用户的主目录本来就属于普通用户，排除后再查
-	bad=$(find "$ROOTFS_DIR" -xdev -path "$ROOTFS_DIR/home/$DESKTOP_USER" -prune -o \
-	      ! -uid 0 -printf '%u %p\n' 2>/dev/null | head -5)
-	[ -z "$bad" ] || die "rootfs 里有非 root 属主的文件：$bad"
+	# 包自带的系统用户（如 polkit 的 uid 102）属主是合法的；只拒绝 rootfs 的
+	# /etc/passwd 里查不到的 uid —— 那才是从开发机漏进来的属主
+	local valid bad
+	valid=$(awk -F: '{ print $3 }' "$ROOTFS_DIR/etc/passwd" 2>/dev/null | tr '\n' ' ')
+	bad=$(find "$ROOTFS_DIR" -xdev ! -uid 0 -printf '%U\n' 2>/dev/null \
+	      | awk -v v=" $valid " '$1 != "" && index(v, " " $1 " ") == 0 { print $1; exit }')
+	[ -z "$bad" ] || die "rootfs 里有开发机属主的文件（uid:$bad）"
 
 	umount_all
 	log "rootfs 就绪: $(du -sh "$ROOTFS_DIR" | cut -f1)"
