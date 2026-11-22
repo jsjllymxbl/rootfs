@@ -63,8 +63,18 @@ ADD_PACKAGES ?=
 SERVICES     ?=
 ADD_SERVICES ?=
 
+# 本地包清单，格式见 README.md
+LOCAL_PKGS     ?=
+ADD_LOCAL_PKGS ?=
+LOCAL_PKG_FILES := $(foreach d,$(LAYER_DIRS),$(d)/packages_local.list)
+local_pkg_entries = $(shell for f in $(LOCAL_PKG_FILES); do [ -f "$$f" ] || continue; sed -e 's/#.*//' "$$f"; done | awk 'NF && !seen[$$0]++ { printf "%s ", $$0 }')
+LOCAL_PKG_ENTRIES := $(strip $(LOCAL_PKGS) $(local_pkg_entries) $(ADD_LOCAL_PKGS))
+local_recipes = $(shell printf '%s\n' $(LOCAL_PKG_ENTRIES) | sed 's/:.*//' | awk 'NF && !seen[$$1]++ { printf "%s ", $$1 }')
+local_pkg_names = $(shell printf '%s\n' $(LOCAL_PKG_ENTRIES) | awk -F: '{ if (NF > 1) { n = split($$2, a, ","); for (i = 1; i <= n; i++) if (a[i] != "") print a[i] } else print $$1 }' | awk 'NF && !seen[$$0]++ { printf "%s ", $$0 }')
+LOCAL_RECIPES   := $(strip $(local_recipes))
+LOCAL_PKG_NAMES := $(strip $(local_pkg_names))
+
 PKG          ?= adbd
-LOCAL_PKGS   ?= adbd
 JOBS         ?= 6
 PACKAGES_OUT   ?= $(OUT)/packages
 PKGBUILD_ROOT  ?= $(WORK_ROOT)/pkgbuild
@@ -96,7 +106,7 @@ define BUILD_ENV
 	DESKTOP_USER='$(DESKTOP_USER)' DESKTOP_PASSWORD='$(DESKTOP_PASSWORD)' \
 	KERNEL_MODULES='$(KERNEL_MODULES)' APK_CACHE='$(APK_CACHE)' \
 	SOURCE_DATE_EPOCH='$(SOURCE_DATE_EPOCH)' COMPRESS='$(COMPRESS)' \
-	ROOTFS_TAR='$(ROOTFS_TAR)' LOCAL_PKGS='$(LOCAL_PKGS)' \
+	ROOTFS_TAR='$(ROOTFS_TAR)' LOCAL_PKGS='$(LOCAL_PKG_NAMES)' \
 	PACKAGES_OUT='$(PACKAGES_OUT)'
 endef
 
@@ -136,11 +146,13 @@ profiles:
 	done
 
 show: check-profile
-	@printf 'profile : %s\n' '$(PROFILE_LIST)'
-	@printf 'layers  : %s\n' '$(LAYERS)'
-	@printf 'work    : %s\n' '$(patsubst $(SRC)/%,%,$(ROOTFS_DIR))'
-	@printf 'tar     : %s\n' '$(patsubst $(SRC)/%,%,$(ROOTFS_TAR))'
-	@printf 'zip     : %s\n' '$(ZIP_NAME)'
+	@printf '%-13s : %s\n' 'profile' '$(PROFILE_LIST)'
+	@printf '%-13s : %s\n' 'layers' '$(LAYERS)'
+	@printf '%-13s : %s\n' 'local recipes' '$(LOCAL_RECIPES)'
+	@printf '%-13s : %s\n' 'local pkgs' '$(LOCAL_PKG_NAMES)'
+	@printf '%-13s : %s\n' 'work' '$(patsubst $(SRC)/%,%,$(ROOTFS_DIR))'
+	@printf '%-13s : %s\n' 'tar' '$(patsubst $(SRC)/%,%,$(ROOTFS_TAR))'
+	@printf '%-13s : %s\n' 'zip' '$(ZIP_NAME)'
 	@for f in packages.list services.list; do \
 		echo "--- $$f ---"; \
 		for l in $(LAYERS); do \
@@ -166,8 +178,8 @@ $(MINIROOTFS): $(FETCH_MINIROOTFS) | ensure-work
 package: $(MINIROOTFS) | check-profile
 	$(RUN) env $(PACKAGE_ENV) bash $(BUILD_PACKAGE) $(PKG)
 
-$(LOCAL_STAMP): $(PKG_FILES) $(BUILD_PACKAGE) | ensure-work
-	@for p in $(LOCAL_PKGS); do \
+$(LOCAL_STAMP): $(PKG_FILES) $(BUILD_PACKAGE) $(LOCAL_PKG_FILES) | ensure-work
+	@for p in $(LOCAL_RECIPES); do \
 		$(MAKE) --no-print-directory package PKG=$$p || exit 1; \
 	done
 	@rm -f $@ && touch $@
@@ -215,4 +227,5 @@ help:
 	@echo '用法: make [目标] [变量=值 ...]；详见 README.md'
 	@echo '目标: all profiles show package fetch rootfs zip shell check clean distclean'
 	@echo '常用变量: PROFILE PACKAGES ADD_PACKAGES SERVICES ADD_SERVICES ROOT_PASSWORD'
+	@echo '          LOCAL_PKGS ADD_LOCAL_PKGS（本地包，见 config/*/packages_local.list）'
 	@echo '          KERNEL_MODULES APK_BRANCH ALPINE_RELEASE TARGET_DIR COMPRESS'

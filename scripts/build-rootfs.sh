@@ -26,7 +26,6 @@ ADD_PACKAGES=${ADD_PACKAGES:-}
 SERVICES=${SERVICES:-}
 ADD_SERVICES=${ADD_SERVICES:-}
 
-LOCAL_PKGS=${LOCAL_PKGS:-}
 APK_BRANCH=${APK_BRANCH:-latest-stable}
 APK_UPGRADE=${APK_UPGRADE:-yes}
 # 用 - 而非 :-：命令行传空表示锁定 root，不能被默认值吃掉
@@ -78,6 +77,14 @@ collect_list() {
 dedupe_words() {
 	printf '%s\n' $1 | awk 'NF && !seen[$0]++ { printf "%s ", $0 }'
 }
+
+# 本地包：make 传进来的是最终包名；手工跑时按层读 packages_local.list（格式见 README.md）
+if [ -z "${LOCAL_PKGS+x}" ]; then
+	LOCAL_PKGS=$(collect_list packages_local.list | awk -F: \
+		'{ if (NF > 1) { n = split($2, a, ","); for (i = 1; i <= n; i++) if (a[i] != "") print a[i] } else print $1 }' \
+		| awk 'NF && !seen[$0]++ { printf "%s ", $0 }')
+fi
+LOCAL_PKGS=$(dedupe_words "$LOCAL_PKGS ${ADD_LOCAL_PKGS:-}")
 
 mount_dev() {
 	local d=$1 spec n maj min mode
@@ -201,11 +208,12 @@ build_tree() {
 		run 'apk upgrade --available --cache-packages'
 	fi
 
-	# 本地包只从 /pkgs 装，不写进 rootfs 的仓库源
+	# 本地包只从 /pkgs 装，不写进 rootfs 的仓库源。
+	# -U 刷新索引缓存（否则可能拿到上次构建的旧索引），-u 让本地版本替换仓库里已有的同名包
 	if [ -n "${LOCAL_PKGS// /}" ]; then
 		repo=$(local_repo) || die "本地仓库里没有 APKINDEX（先 make package）"
 		log "安装本地包: $LOCAL_PKGS（$repo）"
-		run "apk add --allow-untrusted --repository $repo $LOCAL_PKGS"
+		run "apk add --allow-untrusted --update-cache --upgrade --repository $repo $LOCAL_PKGS"
 	fi
 
 	apply_overlays

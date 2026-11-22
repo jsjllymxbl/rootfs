@@ -9,17 +9,23 @@ bootloader -> lk2nd -> boot.img（[initramfs 仓库](https://github.com/jsjllymx
 
 ## 配置结构
 
-每层可选四个部分：
+每层可选五个部分：
 
 | 文件 | 作用 |
 | --- | --- |
 | `packages.list` | 从 Alpine 仓库安装的包 |
+| `packages_local.list` | 本地包（格式 `配方:包1,包2,...`，见下） |
 | `services.list` | `<服务>[:<runlevel>]`，默认 `default` |
 | `overlay/` | 直接覆盖到 rootfs 的文件树 |
 | `post-install.sh` | chroot 内执行一次（可用 `LAYER`/`PROFILE`/`DESKTOP_USER`/`DESKTOP_PASSWORD`） |
 
 `config/base` 永远最先叠；`config/profiles/<name>` 按 `PROFILE` 顺序叠加。包/服务取并集
 去重，overlay 后叠覆盖先叠。当前有 `plasma-mobile` 桌面层，`base` 是纯基础系统。
+
+`packages_local.list` 的每行是 `配方:包1,包2,...`（或只写配方名）：配方对应
+`packages/<配方>/APKBUILD`，冒号后的包才装进 rootfs。例如
+`mesa:mesa,mesa-dri-gallium,mesa-egl` 只构建 `packages/mesa` 并安装这三个子包。
+`LOCAL_PKGS` 覆盖整份清单，`ADD_LOCAL_PKGS` 追加条目。
 
 ## 依赖
 
@@ -47,6 +53,7 @@ make clean / distclean     # 卸载挂载后删除 work/ 和 out/
 | `PROFILE` | 叠加的层，空格分隔 | `base` |
 | `DESKTOP_USER` / `DESKTOP_PASSWORD` | 桌面层用户 / 密码 | `aries` / `123456` |
 | `PACKAGES` / `ADD_PACKAGES` | 替换 / 追加包清单 | 空 |
+| `LOCAL_PKGS` / `ADD_LOCAL_PKGS` | 替换 / 追加本地包清单 | 各层 `packages_local.list` |
 | `SERVICES` / `ADD_SERVICES` | 替换 / 追加服务 | 空 |
 | `ROOT_PASSWORD` | root 密码（空 = 不设置） | `alpine` |
 | `KERNEL_MODULES` | 内核模块目录 | 空 |
@@ -75,6 +82,8 @@ out/                      rootfs tar、刷机包、本地 apk
   base 启用 eudev 给触摸屏打 `ID_INPUT_TOUCHSCREEN` 标签，否则 libinput 会判为 unsupported。
 - 固件由 initramfs 在切根前拷入，rootfs 不带。
 - 本地包 `adbd` 来自 `packages/adbd`：静态、免认证、FunctionFS；服务与 USB 看护脚本同包。
+- `plasma-mobile` 层用 `packages/mesa` 的本地构建替换仓库 mesa：只编 armv7 freedreno/a3xx，
+  去掉 LLVM/Rusticl/Vulkan/其它 gallium 驱动，并带上 a3xx 崩溃、挂起和渲染修复补丁。
 - `plasma-mobile` 层：Plasma Mobile + tinydm autologin + NetworkManager；会禁用 base 的 `buffyboard`
   （它与 kwin_wayland 抢 framebuffer）。用户需加入 `video`/`input`/`audio` 组才能 modeset。
 

@@ -13,7 +13,7 @@ networkmanager-openrc
 networkmanager-wifi
 
 # 图形栈：KWin GL 渲染与 Xwayland
-mesa-dri-gallium
+# mesa 由 packages_local.list 里的本地配方提供，不从仓库装
 xorg-server
 xf86-input-libinput
 xinit
