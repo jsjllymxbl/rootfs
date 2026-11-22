@@ -189,13 +189,13 @@ build_tree() {
 	pkgs=$(dedupe_words "$pkgs $ADD_PACKAGES")
 	if [ -n "${pkgs// /}" ]; then
 		log "安装软件包: $pkgs"
-		run "apk add $pkgs"
+		run "apk add --cache-packages $pkgs"
 	fi
 
 	# 升级放到装包之后，避免 qemu 下 apk-tools 解硬链接失败
 	if [ "$APK_UPGRADE" = yes ]; then
 		log "切到 $APK_BRANCH：升级已有的包"
-		run 'apk upgrade --available'
+		run 'apk upgrade --available --cache-packages'
 	fi
 
 	# 本地包只从 /pkgs 装，不写进 rootfs 的仓库源
