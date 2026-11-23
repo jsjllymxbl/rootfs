@@ -78,7 +78,12 @@ PKG          ?= adbd
 JOBS         ?= 6
 PACKAGES_OUT   ?= $(OUT)/packages
 PKGBUILD_ROOT  ?= $(WORK_ROOT)/pkgbuild
-LOCAL_STAMP    := $(WORK_ROOT)/.local-pkgs
+
+# 每个配方按内容 hash 单独记 stamp：注释变动不重编，切 profile 也不会漏编
+LOCAL_STAMP_DIR := $(WORK_ROOT)/.local-pkgs
+pkg_hash        = $(shell find $(SRC)/packages/$(1) -type f -print0 2>/dev/null | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-12)
+local_stamp     = $(LOCAL_STAMP_DIR)/$(1)-$(call pkg_hash,$(1))
+LOCAL_STAMPS    := $(foreach p,$(LOCAL_RECIPES),$(call local_stamp,$(p)))
 
 FETCH_MINIROOTFS := $(SRC)/scripts/fetch-minirootfs.sh
 BUILD_ROOTFS  := $(SRC)/scripts/build-rootfs.sh
@@ -91,7 +96,6 @@ UPDATER_SCRIPT   := $(SRC)/scripts/recovery/updater-script
 REPOS_FILE := $(BASE_DIR)/repositories
 
 LAYER_FILES := $(shell find $(LAYER_DIRS) -type f 2>/dev/null)
-PKG_FILES   := $(shell find $(SRC)/packages -type f 2>/dev/null)
 
 # sudo 会吃掉环境，显式用 env 带过去
 define BUILD_ENV
@@ -178,17 +182,21 @@ $(MINIROOTFS): $(FETCH_MINIROOTFS) | ensure-work
 package: $(MINIROOTFS) | check-profile
 	$(RUN) env $(PACKAGE_ENV) bash $(BUILD_PACKAGE) $(PKG)
 
-$(LOCAL_STAMP): $(PKG_FILES) $(BUILD_PACKAGE) $(LOCAL_PKG_FILES) | ensure-work
-	@for p in $(LOCAL_RECIPES); do \
-		$(MAKE) --no-print-directory package PKG=$$p || exit 1; \
-	done
-	@rm -f $@ && touch $@
+$(LOCAL_STAMP_DIR): | ensure-work
+	@mkdir -p $@
+
+define LOCAL_PKG_RULE
+$(call local_stamp,$(1)): $(BUILD_PACKAGE) | $(LOCAL_STAMP_DIR)
+	@$(MAKE) --no-print-directory package PKG=$(1)
+	@touch $$@
+endef
+$(foreach p,$(LOCAL_RECIPES),$(eval $(call LOCAL_PKG_RULE,$(p))))
 
 rootfs: $(ROOTFS_TAR)
 
 # 目录本身也是依赖：检测从 overlay 里删掉文件的情形
 $(ROOTFS_TAR): $(MINIROOTFS) $(BUILD_ROOTFS) $(SRC)/Makefile $(LAYER_DIRS) $(LAYER_FILES) \
-               $(LOCAL_STAMP) | check-profile
+               $(LOCAL_STAMPS) | check-profile
 	$(RUN) env $(BUILD_ENV) bash $(BUILD_ROOTFS) build
 
 zip: $(ZIP)
