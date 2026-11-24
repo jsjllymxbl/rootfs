@@ -1,0 +1,8 @@
+[sm.puri.phosh]
+# 默认显示所有应用
+app-filter-mode=[]
+# 收藏栏
+favorites=['org.gnome.Epiphany.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Papers.desktop', 'org.gnome.Console.desktop']
+
+[org.gnome.Epiphany.web]
+user-agent='Mozilla/5.0 (Linux; Android 10; Pixel) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.96 Mobile Safari/537.36'

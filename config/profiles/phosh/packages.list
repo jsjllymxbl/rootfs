@@ -1,0 +1,21 @@
+# Phosh：GNOME 手机外壳（phoc + gnome-session + squeekboard）
+
+phosh
+squeekboard
+phosh-mobile-settings
+udisks2
+
+# 桌面集成
+xdg-desktop-portal
+xdg-desktop-portal-gnome
+
+# 应用
+gnome-console
+nautilus
+gvfs
+decibels
+loupe
+showtime
+epiphany
+papers
+gnome-text-editor
