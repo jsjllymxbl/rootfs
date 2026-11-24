@@ -23,9 +23,10 @@ bootloader -> lk2nd -> boot.img（[initramfs 仓库](https://github.com/jsjllymx
 去重，overlay 后叠覆盖先叠。当前有 `plasma-mobile` 桌面层，`base` 是纯基础系统。
 
 `packages_local.list` 的每行是 `配方:包1,包2,...`（或只写配方名）：配方对应
-`packages/<配方>/APKBUILD`，冒号后的包才装进 rootfs。例如
-`mesa:mesa,mesa-dri-gallium,mesa-egl` 只构建 `packages/mesa` 并安装这三个子包。
-`LOCAL_PKGS` 覆盖整份清单，`ADD_LOCAL_PKGS` 追加条目。
+`packages/<配方>/`，里面可以放 `APKBUILD` 源码构建，也可以直接放 `*.apk` 预编译包。
+冒号后的包才装进 rootfs。例如 `mesa:mesa,mesa-dri-gallium,mesa-egl` 使用
+`packages/mesa` 并安装这三个子包。`LOCAL_PKGS` 覆盖整份清单，`ADD_LOCAL_PKGS` 追加条目。
+预编译包按显式 apk 文件安装，因此即使版本号低于仓库也能替换同名包。
 
 ## 依赖
 
@@ -82,8 +83,8 @@ out/                      rootfs tar、刷机包、本地 apk
   base 启用 eudev 给触摸屏打 `ID_INPUT_TOUCHSCREEN` 标签，否则 libinput 会判为 unsupported。
 - 固件由 initramfs 在切根前拷入，rootfs 不带。
 - 本地包 `adbd` 来自 `packages/adbd`：静态、免认证、FunctionFS；服务与 USB 看护脚本同包。
-- `plasma-mobile` 层用 `packages/mesa` 的本地构建替换仓库 mesa：只编 armv7 freedreno/a3xx，
-  去掉 LLVM/Rusticl/Vulkan/其它 gallium 驱动，并带上 a3xx 崩溃、挂起和渲染修复补丁。
+- `plasma-mobile` 层用 `packages/mesa` 中的上游预编译 apk 替换仓库 mesa（freedreno/a3xx）。
+- `plasma-mobile` 层带 aries 的 UCM2 音频配置，内核需启用音频相关驱动。
 - `plasma-mobile` 层：Plasma Mobile + tinydm autologin + NetworkManager；会禁用 base 的 `buffyboard`
   （它与 kwin_wayland 抢 framebuffer）。用户需加入 `video`/`input`/`audio` 组才能 modeset。
 

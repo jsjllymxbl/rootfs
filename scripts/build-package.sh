@@ -5,6 +5,8 @@ set -euo pipefail
 
 PKG=adbd
 MODE=build
+privkey=
+pubkey=
 if [ -n "${1:-}" ]; then
 	if [ "$1" = umount ]; then MODE=umount; else PKG=$1; fi
 fi
@@ -96,7 +98,9 @@ if [ "$MODE" = umount ]; then
 	exit 0
 fi
 
-[ -f "$PKG_DIR/APKBUILD" ] || die "缺 $PKG_DIR/APKBUILD"
+if [ ! -f "$PKG_DIR/APKBUILD" ] && ! ls "$PKG_DIR"/*.apk >/dev/null 2>&1; then
+	die "$PKG_DIR 里既没有 APKBUILD 也没有 *.apk"
+fi
 [ -f "$TARBALL" ] || die "缺少 $TARBALL（make fetch 会下载）"
 [ -e /proc/sys/fs/binfmt_misc/qemu-arm ] || die '没有 armv7 binfmt（qemu-user-binfmt）'
 
@@ -108,30 +112,40 @@ else
 	setup_chroot
 fi
 
-# abuild 把 APKBUILD 的上一层当仓库名，这里固定为 local
-log "编 $PKG"
-mkdir -p "$BUILD_ROOT/build/local"
-rm -rf "$BUILD_ROOT/build/local/$PKG"
-cp -a "$PKG_DIR" "$BUILD_ROOT/build/local/$PKG"
-run "chmod -R u+w /build/local/$PKG"
+if [ -f "$PKG_DIR/APKBUILD" ]; then
+	# abuild 把 APKBUILD 的上一层当仓库名，这里固定为 local
+	log "编 $PKG"
+	mkdir -p "$BUILD_ROOT/build/local"
+	rm -rf "$BUILD_ROOT/build/local/$PKG"
+	cp -a "$PKG_DIR" "$BUILD_ROOT/build/local/$PKG"
+	run "chmod -R u+w /build/local/$PKG"
 
-# 签名 key 只生成一次；公钥必须进 /etc/apk/keys，否则建索引报 UNTRUSTED。
-# abuild 的配置路径 stable/edge 不一样，两个都认；只读取存在的文件，避免 pipefail 误判
-find_privkey() {
-	local c
-	for c in "$BUILD_ROOT/root/.abuild/abuild.conf" "$BUILD_ROOT/root/.config/abuild/abuild.conf"; do
-		[ -f "$c" ] || continue
-		sed -n 's/^PACKAGER_PRIVKEY="\(.*\)"/\1/p' "$c"
-	done | tail -1 || true
-}
-privkey=$(find_privkey)
-[ -n "$privkey" ] || { run 'abuild-keygen -n -a >/dev/null 2>&1'; privkey=$(find_privkey); }
-[ -n "$privkey" ] && [ -f "$BUILD_ROOT$privkey.pub" ] || die "abuild 密钥没配好（$privkey）"
-pubkey=$(basename "$privkey").pub
-install -m 0644 "$BUILD_ROOT$privkey.pub" "$BUILD_ROOT/etc/apk/keys/"
+	# 签名 key 只生成一次；公钥必须进 /etc/apk/keys，否则建索引报 UNTRUSTED。
+	# abuild 的配置路径 stable/edge 不一样，两个都认；只读取存在的文件，避免 pipefail 误判
+	find_privkey() {
+		local c
+		for c in "$BUILD_ROOT/root/.abuild/abuild.conf" "$BUILD_ROOT/root/.config/abuild/abuild.conf"; do
+			[ -f "$c" ] || continue
+			sed -n 's/^PACKAGER_PRIVKEY="\(.*\)"/\1/p' "$c"
+		done | tail -1 || true
+	}
+	privkey=$(find_privkey)
+	[ -n "$privkey" ] || { run 'abuild-keygen -n -a >/dev/null 2>&1'; privkey=$(find_privkey); }
+	[ -n "$privkey" ] && [ -f "$BUILD_ROOT$privkey.pub" ] || die "abuild 密钥没配好（$privkey）"
+	pubkey=$(basename "$privkey").pub
+	install -m 0644 "$BUILD_ROOT$privkey.pub" "$BUILD_ROOT/etc/apk/keys/"
 
-chroot "$BUILD_ROOT" /bin/sh -c \
-	"cd /build/local/$PKG && REPODEST=/packages JOBS=$JOBS abuild -F -r"
+	chroot "$BUILD_ROOT" /bin/sh -c \
+		"cd /build/local/$PKG && REPODEST=/packages JOBS=$JOBS abuild -F -r"
+else
+	# 预编译包：直接放进本地仓库并重建索引，不走 abuild
+	log "导入预编译包 $PKG"
+	repo_dir="$BUILD_ROOT/packages/local/armv7"
+	mkdir -p "$repo_dir"
+	rm -f "$repo_dir/$PKG"-*.apk
+	install -m 0644 "$PKG_DIR"/*.apk "$repo_dir/"
+	run "apk index --allow-untrusted -o /packages/local/armv7/APKINDEX.tar.gz /packages/local/armv7/*.apk"
+fi
 
 log "收集产物 -> $OUT_PACKAGES"
 mkdir -p "$OUT_PACKAGES"

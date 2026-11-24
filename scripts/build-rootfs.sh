@@ -208,12 +208,19 @@ build_tree() {
 		run 'apk upgrade --available --cache-packages'
 	fi
 
-	# 本地包只从 /pkgs 装，不写进 rootfs 的仓库源。
-	# -U 刷新索引缓存（否则可能拿到上次构建的旧索引），-u 让本地版本替换仓库里已有的同名包
+	# 本地包按显式 apk 文件安装：即使版本号低于仓库，也能换成打包进来的版本
 	if [ -n "${LOCAL_PKGS// /}" ]; then
 		repo=$(local_repo) || die "本地仓库里没有 APKINDEX（先 make package）"
 		log "安装本地包: $LOCAL_PKGS（$repo）"
-		run "apk add --allow-untrusted --update-cache --upgrade --repository $repo $LOCAL_PKGS"
+		local apks='' p f
+		for p in $LOCAL_PKGS; do
+			for f in "$ROOTFS_DIR$repo"/*/"$p"-[0-9]*.apk; do
+				[ -e "$f" ] || continue
+				apks="$apks ${f#"$ROOTFS_DIR"}"
+			done
+		done
+		[ -n "$apks" ] || die "本地仓库里找不到 $LOCAL_PKGS 对应的 apk"
+		run "apk add --allow-untrusted --update-cache $apks"
 	fi
 
 	apply_overlays
