@@ -64,11 +64,15 @@ SERVICES     ?=
 ADD_SERVICES ?=
 
 # 本地包清单，格式见 README.md
-LOCAL_PKGS     ?=
 ADD_LOCAL_PKGS ?=
 LOCAL_PKG_FILES := $(foreach d,$(LAYER_DIRS),$(d)/packages_local.list)
 local_pkg_entries = $(shell for f in $(LOCAL_PKG_FILES); do [ -f "$$f" ] || continue; sed -e 's/#.*//' "$$f"; done | awk 'NF && !seen[$$0]++ { printf "%s ", $$0 }')
-LOCAL_PKG_ENTRIES := $(strip $(LOCAL_PKGS) $(local_pkg_entries) $(ADD_LOCAL_PKGS))
+ifeq ($(origin LOCAL_PKGS),undefined)
+LOCAL_PKG_OVERRIDE := $(local_pkg_entries)
+else
+LOCAL_PKG_OVERRIDE :=
+endif
+LOCAL_PKG_ENTRIES := $(strip $(LOCAL_PKGS) $(LOCAL_PKG_OVERRIDE) $(ADD_LOCAL_PKGS))
 local_recipes = $(shell printf '%s\n' $(LOCAL_PKG_ENTRIES) | sed 's/:.*//' | awk 'NF && !seen[$$1]++ { printf "%s ", $$1 }')
 local_pkg_names = $(shell printf '%s\n' $(LOCAL_PKG_ENTRIES) | awk -F: '{ if (NF > 1) { n = split($$2, a, ","); for (i = 1; i <= n; i++) if (a[i] != "") print a[i] } else print $$1 }' | awk 'NF && !seen[$$0]++ { printf "%s ", $$0 }')
 LOCAL_RECIPES   := $(strip $(local_recipes))
