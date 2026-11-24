@@ -9,18 +9,40 @@ bootloader -> lk2nd -> boot.img（[initramfs 仓库](https://github.com/jsjllymx
 
 ## 配置结构
 
-每层可选五个部分：
+每层可选六个部分：
 
 | 文件 | 作用 |
 | --- | --- |
-| `packages.list` | 从 Alpine 仓库安装的包 |
+| `packages.list` | 从 Alpine 仓库安装的包（第一行注释当作层描述） |
 | `packages_local.list` | 本地包（格式 `配方:包1,包2,...`，见下） |
 | `services.list` | `<服务>[:<runlevel>]`，默认 `default` |
 | `overlay/` | 直接覆盖到 rootfs 的文件树 |
-| `post-install.sh` | chroot 内执行一次（可用 `LAYER`/`PROFILE`/`DESKTOP_USER`/`DESKTOP_PASSWORD`） |
+| `post-install.sh` | chroot 内执行一次（可用 `LAYER`/`PROFILE`/`DESKTOP_USER`/`DESKTOP_PASSWORD`/`LAYER_LIB`） |
+| `requires` | 必须前置的层，每行一个 |
 
-`config/base` 永远最先叠；`config/profiles/<name>` 按 `PROFILE` 顺序叠加。包/服务取并集
-去重，overlay 后叠覆盖先叠。当前有 `plasma-mobile` 桌面层，`base` 是纯基础系统。
+分层规则：
+
+- `config/base` 永远最先叠。
+- `config/profiles/<name>` 按 `PROFILE` 叠加；`requires` 里点名的层自动排在前面，不用手工拼。
+  `make PROFILE=phosh` 等价于 `PROFILE="desktop phosh"`。
+- 包/服务取并集去重，overlay 后叠覆盖先叠。
+
+现有层：
+
+| 层 | 内容 |
+| --- | --- |
+| `base` | 纯基础系统；设备相关配置也在这里 |
+| `desktop` | 共用桌面层：会话总线、网络、自动登录、图形驱动、中文环境、普通用户 |
+| `phosh` | Phosh 桌面层（requires `desktop`） |
+| `plasma-mobile` | Plasma Mobile 桌面层（requires `desktop`） |
+
+`post-install.sh` 里的建用户/加组/sudo/家目录/关 fb 键盘/设会话都走
+`config/lib/hooks.sh`（构建脚本装进 chroot，用 `LAYER_LIB` 传给钩子）。桌面层通常只需要：
+
+```sh
+. "${LAYER_LIB:?}"
+hook_session phosh.desktop   # /usr/share/wayland-sessions 下的文件名
+```
 
 `packages_local.list` 的每行是 `配方:包1,包2,...`（或只写配方名）：配方对应
 `packages/<配方>/`，里面可以放 `APKBUILD` 源码构建，也可以直接放 `*.apk` 预编译包。
@@ -35,23 +57,24 @@ bootloader -> lk2nd -> boot.img（[initramfs 仓库](https://github.com/jsjllymx
 ## 用法
 
 ```sh
-make                       # 构建 base 的 rootfs.tar.gz + TWRP 刷机包
-make PROFILE=plasma-mobile   # 基础 + Plasma Mobile 桌面层
-make profiles              # 列出可用层
-make show                  # 查看合并后的包/服务与产物名
-make package PKG=adbd      # 单独编本地包（out/packages/）
-make fetch                 # 下载 minirootfs
-make rootfs / make zip     # 只构建 rootfs / 只打刷机包
-make shell                 # 进 chroot
-make check                 # 校验刷机包
-make clean / distclean     # 卸载挂载后删除 work/ 和 out/
+make                        # 构建 base 的 rootfs.tar.gz + TWRP 刷机包
+make PROFILE=phosh          # 基础 + 共用桌面层 + Phosh
+make PROFILE=plasma-mobile  # 基础 + 共用桌面层 + Plasma Mobile
+make profiles               # 列出可用层（含 requires）
+make show                   # 查看展开后的层、包/服务与产物名
+make package PKG=adbd       # 单独编本地包（out/packages/）
+make fetch                  # 下载 minirootfs
+make rootfs / make zip      # 只构建 rootfs / 只打刷机包
+make shell                  # 进 chroot
+make check                  # 校验刷机包
+make clean / distclean      # 卸载挂载后删除 work/ 和 out/
 ```
 
 常用变量：
 
 | 变量 | 说明 | 默认 |
 | --- | --- | --- |
-| `PROFILE` | 叠加的层，空格分隔 | `base` |
+| `PROFILE` | 要叠加的层，空格分隔（依赖会自动展开） | `base` |
 | `DESKTOP_USER` / `DESKTOP_PASSWORD` | 桌面层用户 / 密码 | `aries` / `123456` |
 | `PACKAGES` / `ADD_PACKAGES` | 替换 / 追加包清单 | 空 |
 | `LOCAL_PKGS` / `ADD_LOCAL_PKGS` | 替换 / 追加本地包清单 | 各层 `packages_local.list` |
@@ -66,35 +89,23 @@ make clean / distclean     # 卸载挂载后删除 work/ 和 out/
 ## 目录
 
 ```
-config/base/              基础层配置（包/服务/仓库源/overlay）
-config/profiles/plasma-mobile/   Plasma Mobile 桌面层
-packages/<name>/          本地 apk（armv7 chroot + abuild）
-scripts/                  构建、打包、recovery 脚本
-work/base/rootfs/         rootfs 构建目录
-out/                      rootfs tar、刷机包、本地 apk
+config/base/                    基础层（含设备相关的 overlay）
+config/profiles/desktop/        共用桌面层
+config/profiles/phosh/          Phosh 桌面层
+config/profiles/plasma-mobile/  Plasma Mobile 桌面层
+config/lib/hooks.sh             post-install 共用函数
+packages/<name>/                本地 apk（armv7 chroot + abuild）
+scripts/                        构建、打包、层解析、recovery 脚本
+work/<层组合>/rootfs/           rootfs 构建目录
+out/                            rootfs tar、刷机包、本地 apk
 ```
 
-## 内容
-
-- 基础系统：busybox/openrc、WPA supplicant、dropbear、curl/sudo/nano/htop、e2fsprogs/kmod；
-  root 密码 `alpine`，时区 `Asia/Shanghai`，主机名 `aries`。
-- `/etc/network/interfaces` 只配置回环，满足 dropbear 的 `need net`；WiFi 手工配。
-- `buffyboard` 是帧缓冲 tty 的触摸键盘，随 default runlevel 启动；依赖内核 uinput 和 fbdev。
-  base 启用 eudev 给触摸屏打 `ID_INPUT_TOUCHSCREEN` 标签，否则 libinput 会判为 unsupported。
-- 固件由 initramfs 在切根前拷入，rootfs 不带。
-- 本地包 `adbd` 来自 `packages/adbd`：静态、免认证、FunctionFS；服务与 USB 看护脚本同包。
-- `plasma-mobile` 层用 `packages/mesa` 中的上游预编译 apk 替换仓库 mesa（freedreno/a3xx）。
-- `plasma-mobile` 应用：dolphin、qmlkonsole、gwenview、haruna、elisa、firefox-esr 与 mobile-config-firefox。
-- `plasma-mobile` 层带 aries 的 UCM2 音频配置，内核需启用音频相关驱动。
-- 桌面用户加入 GID 1023 的 `media_rw` 组，可读写 initramfs bind 的 `/android_sdcard`。
-- `plasma-mobile` 层：Plasma Mobile + tinydm autologin + NetworkManager；会禁用 base 的 `buffyboard`
-  （它与 kwin_wayland 抢 framebuffer）。用户需加入 `video`/`input`/`audio` 组才能 modeset。
 
 ## 刷机包
 
 ```
-aries-alpine-base-<branch>-<date>.zip
-├── rootfs-base.tar.gz                 STORED，第一个成员
+aries-alpine-<层组合>-<branch>-<date>.zip
+├── rootfs-<层组合>.tar.gz             STORED，第一个成员
 └── META-INF/com/google/android/{update-binary,updater-script}
 ```
 
