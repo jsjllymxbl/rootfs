@@ -1,22 +1,7 @@
-# Plasma Mobile：Wayland + KWin（base 已含 eudev/触摸驱动相关包）
+# Plasma Mobile：Wayland + KWin
+
 plasma-mobile-meta
 plasma-mobile
-tinydm-openrc
-
-# 会话服务
-dbus
-dbus-openrc
-elogind-openrc
-polkit-elogind
-polkit-openrc
-networkmanager-openrc
-networkmanager-wifi
-
-# 图形栈：KWin GL 渲染与 Xwayland
-# mesa 由 packages_local.list 里的本地 apk 提供，不从仓库装
-xorg-server
-xf86-input-libinput
-xinit
 
 # 应用
 dolphin
@@ -26,10 +11,3 @@ haruna
 elisa
 firefox-esr
 mobile-config-firefox
-
-# 中文环境：lang 是 meta 包，带入 musl-locales
-lang
-font-noto-cjk
-font-noto-emoji
-
-# 可选（较重）：discover discover-backend-apk discover-backend-flatpak flatpak

@@ -1,0 +1,11 @@
+# 共用桌面层服务（与 base 合并）
+dbus:boot
+elogind:boot
+polkit:boot
+
+openrc-settingsd:default
+networkmanager:default
+udev-postmount:default
+
+# 待做：内核露出加速度计后启用
+# iio-sensor-proxy:default

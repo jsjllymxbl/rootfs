@@ -1,11 +1,2 @@
-# Plasma Mobile 服务（与 base 合并）
-dbus:default
-elogind:default
-polkit:default
-networkmanager:default
-udev-postmount:default
-
-iio-sensor-proxy:default
+# Plasma Mobile 服务（与 base/desktop 合并）
 tinydm:default
-
-# 可选：pipewire:default  wireplumber:default

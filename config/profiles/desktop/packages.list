@@ -1,0 +1,35 @@
+# 共用桌面层：会话总线、网络、自动登录、图形驱动与中文环境
+# 不单独使用，桌面层通过 requires 引用
+
+# 会话与服务总线
+dbus
+dbus-openrc
+elogind
+elogind-openrc
+polkit-elogind
+polkit-openrc
+
+# 网络
+networkmanager
+networkmanager-openrc
+networkmanager-wifi
+
+# 自动登录，会话由各桌面层设置
+tinydm
+tinydm-openrc
+
+# 传感器与电源
+iio-sensor-proxy
+upower
+
+# 图形：Xwayland；mesa 由 packages_local.list 提供
+xwayland
+xprop
+
+# 声音
+pulseaudio-utils
+
+# 中文环境
+lang
+font-noto-cjk
+font-noto-emoji
