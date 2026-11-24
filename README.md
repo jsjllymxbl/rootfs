@@ -86,6 +86,7 @@ out/                      rootfs tar、刷机包、本地 apk
 - `plasma-mobile` 层用 `packages/mesa` 中的上游预编译 apk 替换仓库 mesa（freedreno/a3xx）。
 - `plasma-mobile` 应用：dolphin、qmlkonsole、gwenview、haruna、elisa、firefox-esr 与 mobile-config-firefox。
 - `plasma-mobile` 层带 aries 的 UCM2 音频配置，内核需启用音频相关驱动。
+- 桌面用户加入 GID 1023 的 `media_rw` 组，可读写 initramfs bind 的 `/android_sdcard`。
 - `plasma-mobile` 层：Plasma Mobile + tinydm autologin + NetworkManager；会禁用 base 的 `buffyboard`
   （它与 kwin_wayland 抢 framebuffer）。用户需加入 `video`/`input`/`audio` 组才能 modeset。
 

@@ -11,7 +11,10 @@ if ! id "$user" >/dev/null 2>&1; then
 	adduser -D -u 1000 -s /bin/sh "$user"
 fi
 
-for g in audio video input render plugdev netdev wheel; do
+# Android /media/0 的属组；initramfs 把它 bind 到 /android_sdcard
+addgroup -g 1023 media_rw >/dev/null 2>&1 || true
+
+for g in audio video input render plugdev netdev wheel media_rw; do
 	grep -q "^$g:" /etc/group || continue
 	addgroup "$user" "$g" >/dev/null 2>&1 || true
 done
