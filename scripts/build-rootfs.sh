@@ -12,8 +12,18 @@ OUT_DIR=${OUT_DIR:-$SRC_DIR/out}
 APK_CACHE=${APK_CACHE:-$WORK_DIR/apkcache}
 ARCH=${ARCH:-armv7}
 
+# make 会传展开好的 LAYERS；手工跑时把 PROFILE 当层列表交给解析脚本
+LAYERS=${LAYERS:-}
+PROFILE=${PROFILE:-}
+if [ -z "$LAYERS" ]; then
+	LAYERS=$(SRC_DIR="$SRC_DIR" CONFIG_DIR="$CONFIG_DIR" \
+		bash "$SRC_DIR/scripts/resolve-layers.sh" "${PROFILE:-base}")
+	PROFILE=
+fi
 LAYERS=${LAYERS:-base}
 PROFILE=${PROFILE:-$(printf '%s' "$LAYERS" | tr ' ' '-')}
+
+HOOK_LIB=${HOOK_LIB:-$CONFIG_DIR/lib/hooks.sh}
 
 ROOTFS_DIR=${ROOTFS_DIR:-$WORK_DIR/$PROFILE/rootfs}
 TARBALL=${TARBALL:-}
@@ -165,17 +175,22 @@ apply_services() {
 }
 
 run_hooks() {
-	local l hook target=/tmp/.aries-post-install.sh
+	local l hook target=/tmp/.aries-post-install.sh target_lib=/tmp/.aries-hooks.sh lib_env=
+	if [ -f "$HOOK_LIB" ]; then
+		install -m 0755 "$HOOK_LIB" "$ROOTFS_DIR$target_lib"
+		lib_env="LAYER_LIB=$target_lib"
+	fi
 	for l in $LAYERS; do
 		hook=$(layer_dir "$l")/post-install.sh
 		[ -f "$hook" ] || continue
 		log "post-install: $l"
 		install -m 0755 "$hook" "$ROOTFS_DIR$target"
 		run "LAYER='$l' PROFILE='$PROFILE' DESKTOP_USER='$DESKTOP_USER' \
-		     DESKTOP_PASSWORD='$DESKTOP_PASSWORD' sh $target" \
+		     DESKTOP_PASSWORD='$DESKTOP_PASSWORD' $lib_env sh $target" \
 			|| die "层 $l 的 post-install.sh 失败"
 		rm -f "$ROOTFS_DIR$target"
 	done
+	rm -f "$ROOTFS_DIR$target_lib"
 }
 
 build_tree() {

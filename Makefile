@@ -17,13 +17,15 @@ ALPINE_RELEASE ?=
 ARCH           ?= armv7
 MIRROR         ?= https://dl-cdn.alpinelinux.org/alpine
 
-# 分层：base 永远叠加，PROFILE 里的名字依次叠加
+CONFIG_DIR   := $(SRC)/config
+RESOLVE_LAYERS := $(SRC)/scripts/resolve-layers.sh
+
+# 分层：base 永远叠加；PROFILE 里的层按各自的 requires 展开
 PROFILE        ?= base
-PROFILE_LIST   := $(strip $(PROFILE))
+PROFILE_LIST   := $(strip $(shell SRC_DIR='$(SRC)' CONFIG_DIR='$(CONFIG_DIR)' bash $(RESOLVE_LAYERS) $(PROFILE) 2>/dev/null))
 EXTRA_PROFILES := $(filter-out base,$(PROFILE_LIST))
 PROFILE_SLUG   := $(if $(EXTRA_PROFILES),$(subst $(space),-,$(EXTRA_PROFILES)),base)
 
-CONFIG_DIR   := $(SRC)/config
 BASE_DIR     := $(CONFIG_DIR)/base
 PROFILE_DIRS := $(foreach p,$(EXTRA_PROFILES),$(CONFIG_DIR)/profiles/$(p))
 LAYER_DIRS   := $(BASE_DIR) $(PROFILE_DIRS)
@@ -34,6 +36,12 @@ WORK_ROOT := $(SRC)/work
 WORK      := $(WORK_ROOT)/$(PROFILE_SLUG)
 
 MINIROOTFS := $(WORK_ROOT)/.minirootfs
+# 记录里指向的 tarball 被删了（distclean、手删）就让 fetch 重新解析
+$(shell t=$$(cat $(MINIROOTFS) 2>/dev/null); \
+	[ -z "$$t" ] || [ -f "$$t" ] || { \
+		echo "==> $(patsubst $(SRC)/%,%,$(MINIROOTFS)) 指向的 $(notdir $$t) 不见了，重新取" >&2; \
+		rm -f $(MINIROOTFS); })
+
 ROOTFS_DIR := $(WORK)/rootfs
 ROOTFS_TAR ?= $(OUT)/rootfs-$(PROFILE_SLUG).tar.gz
 
@@ -100,6 +108,8 @@ UPDATER_SCRIPT   := $(SRC)/scripts/recovery/updater-script
 REPOS_FILE := $(BASE_DIR)/repositories
 
 LAYER_FILES := $(shell find $(LAYER_DIRS) -type f 2>/dev/null)
+HOOK_LIB    := $(CONFIG_DIR)/lib/hooks.sh
+HOOK_LIB_FILES := $(shell find $(CONFIG_DIR)/lib -type f 2>/dev/null)
 
 # sudo 会吃掉环境，显式用 env 带过去
 define BUILD_ENV
@@ -115,7 +125,7 @@ define BUILD_ENV
 	KERNEL_MODULES='$(KERNEL_MODULES)' APK_CACHE='$(APK_CACHE)' \
 	SOURCE_DATE_EPOCH='$(SOURCE_DATE_EPOCH)' COMPRESS='$(COMPRESS)' \
 	ROOTFS_TAR='$(ROOTFS_TAR)' LOCAL_PKGS='$(LOCAL_PKG_NAMES)' \
-	PACKAGES_OUT='$(PACKAGES_OUT)'
+	HOOK_LIB='$(HOOK_LIB)' PACKAGES_OUT='$(PACKAGES_OUT)'
 endef
 
 define PACKAGE_ENV
@@ -136,13 +146,7 @@ ensure-work:
 	@$(RUN) chown $(DEV_UID):$(DEV_GID) $(WORK_ROOT)
 
 check-profile:
-	@for p in $(EXTRA_PROFILES); do \
-		if [ ! -d "$(CONFIG_DIR)/profiles/$$p" ]; then \
-			echo "ERROR: 没有 profile '$$p'" >&2; \
-			echo "可用: base $(shell ls -1 $(CONFIG_DIR)/profiles 2>/dev/null | tr '\n' ' ')" >&2; \
-			exit 1; \
-		fi; \
-	done
+	@SRC_DIR='$(SRC)' CONFIG_DIR='$(CONFIG_DIR)' bash $(RESOLVE_LAYERS) $(PROFILE) >/dev/null
 
 profiles:
 	@printf '%-14s %s\n' base '纯基础系统'
@@ -150,11 +154,12 @@ profiles:
 		[ -d "$$d" ] || continue; \
 		n=$$(basename "$$d"); \
 		desc=$$(head -1 "$$d/packages.list" 2>/dev/null | sed 's/^#[[:space:]]*//'); \
-		printf '%-14s %s\n' "$$n" "$${desc:-（无描述）}"; \
+		req=$$(sed -e 's/#.*//' "$$d/requires" 2>/dev/null | awk 'NF { printf "%s ", $$1 }'); \
+		printf '%-14s %s%s\n' "$$n" "$${desc:-（无描述）}" "$${req:+  <- $$req}"; \
 	done
 
 show: check-profile
-	@printf '%-13s : %s\n' 'profile' '$(PROFILE_LIST)'
+	@printf '%-13s : %s\n' 'profile' '$(PROFILE)'
 	@printf '%-13s : %s\n' 'layers' '$(LAYERS)'
 	@printf '%-13s : %s\n' 'local recipes' '$(LOCAL_RECIPES)'
 	@printf '%-13s : %s\n' 'local pkgs' '$(LOCAL_PKG_NAMES)'
@@ -199,8 +204,8 @@ $(foreach p,$(LOCAL_RECIPES),$(eval $(call LOCAL_PKG_RULE,$(p))))
 rootfs: $(ROOTFS_TAR)
 
 # 目录本身也是依赖：检测从 overlay 里删掉文件的情形
-$(ROOTFS_TAR): $(MINIROOTFS) $(BUILD_ROOTFS) $(SRC)/Makefile $(LAYER_DIRS) $(LAYER_FILES) \
-               $(LOCAL_STAMPS) | check-profile
+$(ROOTFS_TAR): $(MINIROOTFS) $(BUILD_ROOTFS) $(RESOLVE_LAYERS) $(SRC)/Makefile $(LAYER_DIRS) \
+               $(LAYER_FILES) $(HOOK_LIB_FILES) $(LOCAL_STAMPS) | check-profile
 	$(RUN) env $(BUILD_ENV) bash $(BUILD_ROOTFS) build
 
 zip: $(ZIP)
@@ -238,6 +243,8 @@ distclean: clean
 help:
 	@echo '用法: make [目标] [变量=值 ...]；详见 README.md'
 	@echo '目标: all profiles show package fetch rootfs zip shell check clean distclean'
+	@echo '  make PROFILE=phosh          基础 + 共用桌面层 + Phosh'
+	@echo '  make PROFILE=plasma-mobile  基础 + 共用桌面层 + Plasma Mobile'
 	@echo '常用变量: PROFILE PACKAGES ADD_PACKAGES SERVICES ADD_SERVICES ROOT_PASSWORD'
 	@echo '          LOCAL_PKGS ADD_LOCAL_PKGS（本地包，见 config/*/packages_local.list）'
 	@echo '          KERNEL_MODULES APK_BRANCH ALPINE_RELEASE TARGET_DIR COMPRESS'
