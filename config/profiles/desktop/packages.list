@@ -28,6 +28,7 @@ xprop
 
 # 声音
 pulseaudio-utils
+rtkit
 
 # 中文环境
 lang

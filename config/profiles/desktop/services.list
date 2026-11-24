@@ -5,6 +5,7 @@ polkit:boot
 
 openrc-settingsd:default
 networkmanager:default
+rtkit:default
 udev-postmount:default
 
 # 待做：内核露出加速度计后启用
