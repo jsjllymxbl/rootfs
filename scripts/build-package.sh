@@ -108,6 +108,7 @@ if [ -x "$BUILD_ROOT/sbin/apk" ]; then
 	log "复用 $BUILD_ROOT"
 	write_repos "$BUILD_ROOT/etc/apk/repositories"
 	mount_in
+	run 'apk update'
 else
 	setup_chroot
 fi
