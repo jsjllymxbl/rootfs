@@ -13,10 +13,19 @@ networkmanager-openrc
 networkmanager-wifi
 
 # 图形栈：KWin GL 渲染与 Xwayland
-# mesa 由 packages_local.list 里的本地配方提供，不从仓库装
+# mesa 由 packages_local.list 里的本地 apk 提供，不从仓库装
 xorg-server
 xf86-input-libinput
 xinit
+
+# 应用
+dolphin
+qmlkonsole
+gwenview
+haruna
+elisa
+firefox-esr
+mobile-config-firefox
 
 # 中文环境：lang 是 meta 包，带入 musl-locales
 lang
