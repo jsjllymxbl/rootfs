@@ -35,6 +35,11 @@ hook_home() {
 	for d in Desktop Downloads Templates Public Documents Music Pictures Videos; do
 		install -d -o "$DESKTOP_USER" -g "$DESKTOP_USER" -m 0755 "$home/$d"
 	done
+
+	# initramfs 在切根前把 Android 内部存储 bind 到 /android_sdcard；
+	# 在家目录留一个同名入口，桌面用户通过它直接访问。
+	ln -sfn /android_sdcard "$home/android_sdcard"
+	chown -h "$DESKTOP_USER:$DESKTOP_USER" "$home/android_sdcard"
 }
 
 # overlay 里的 *.gschema.override 在装包后才拷入，需要重新编译
